@@ -146,16 +146,19 @@ impl App {
         );
 
         let scale = self.config.scale;
-        let margin = self.config.margin;
+        let (margin_x, margin_y) = (
+            self.config.horizontal_margin(),
+            self.config.vertical_margin(),
+        );
         let corner = self.config.corner;
         let (top, bottom) = match corner {
-            Corner::TopLeft | Corner::TopRight => (margin, 0),
-            Corner::BottomLeft | Corner::BottomRight => (0, margin),
+            Corner::TopLeft | Corner::TopRight => (margin_y, 0),
+            Corner::BottomLeft | Corner::BottomRight => (0, margin_y),
         };
         let (left, right) = if corner.is_right() {
-            (0, margin)
+            (0, margin_x)
         } else {
-            (margin, 0)
+            (margin_x, 0)
         };
 
         layer.set_anchor(corner.anchor());

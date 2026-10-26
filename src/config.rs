@@ -44,6 +44,10 @@ pub struct Config {
     pub corner: Corner,
     /// Gap from the screen edges, in logical pixels.
     pub margin: i32,
+    /// Gap from the left or right edge; takes `margin` when unset.
+    pub margin_x: Option<i32>,
+    /// Gap from the top or bottom edge; takes `margin` when unset.
+    pub margin_y: Option<i32>,
     /// Screen pixels per sprite pixel.
     pub scale: u32,
     /// Output to live on, by connector name; the first one to appear when unset.
@@ -64,6 +68,8 @@ impl Default for Config {
         Self {
             corner: Corner::BottomRight,
             margin: 24,
+            margin_x: None,
+            margin_y: None,
             scale: 4,
             output: None,
             layer: Layer::Bottom,
@@ -90,6 +96,16 @@ fn deserialize_layer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Layer
 }
 
 impl Config {
+    /// Gap from the left or right screen edge.
+    pub fn horizontal_margin(&self) -> i32 {
+        self.margin_x.unwrap_or(self.margin)
+    }
+
+    /// Gap from the top or bottom screen edge.
+    pub fn vertical_margin(&self) -> i32 {
+        self.margin_y.unwrap_or(self.margin)
+    }
+
     pub fn load() -> Result<Self> {
         let Some(path) = config_path() else {
             return Ok(Self::default());
@@ -153,6 +169,8 @@ mod tests {
             r#"
             corner = "top-left"
             margin = 8
+            margin_x = 12
+            margin_y = 4
             scale = 3
             output = "DP-1"
             layer = "top"
@@ -165,9 +183,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(Corner::TopLeft, config.corner);
+        assert_eq!(
+            (12, 4),
+            (config.horizontal_margin(), config.vertical_margin())
+        );
         assert_eq!(Some("DP-1"), config.output.as_deref());
         assert_eq!(Layer::Top, config.layer);
         assert!(config.mirrored());
+    }
+
+    #[test]
+    fn axis_margins_fall_back_to_margin() {
+        let config = Config::parse("margin = 8\nmargin_y = 2").unwrap();
+        assert_eq!(
+            (8, 2),
+            (config.horizontal_margin(), config.vertical_margin())
+        );
     }
 
     #[test]

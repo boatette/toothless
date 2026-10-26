@@ -6,6 +6,11 @@ corner = "bottom-right"
 # Gap from the screen edges, in logical pixels.
 margin = 24
 
+# Override the gap per axis: margin_x for the left/right edge, margin_y for the
+# top/bottom one. Each falls back to margin when unset.
+# margin_x = 24
+# margin_y = 24
+
 # Screen pixels per sprite pixel. The sprite is 40x28, so 4 makes him 160x112.
 # His surface is another 14 sprite pixels tall to fit his speech bubble, above
 # him in a bottom corner and below him in a top one. Only he takes clicks.

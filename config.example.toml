@@ -1,0 +1,28 @@
+# ~/.config/toothless/config.toml. Every key is optional; these are the defaults.
+
+# Which corner he sits in: top-left, top-right, bottom-left or bottom-right.
+corner = "bottom-right"
+
+# Gap from the screen edges, in logical pixels.
+margin = 24
+
+# Screen pixels per sprite pixel. The sprite is 40x28, so 4 makes him 160x112.
+scale = 4
+
+# Output to live on, by connector name. Unset, he takes the first one to appear.
+# output = "eDP-1"
+
+# background, bottom, top or overlay. bottom keeps him above the wallpaper and
+# behind windows; fullscreen windows cover everything but overlay.
+layer = "bottom"
+
+# Face left instead of right. Unset, he faces the middle of the screen.
+# mirror = true
+
+# CPU percentages at which he wakes up, gets excited and charges a plasma blast.
+awake = 10
+excited = 50
+charging = 85
+
+# Milliseconds between CPU readings.
+sample_interval = 2000

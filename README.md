@@ -9,7 +9,7 @@ A Night Fury that lives in the corner of your Wayland desktop and reacts to how 
 | 50–85% | hopping and flapping, faster the busier it gets |
 | over 85% | charging a plasma blast |
 
-Click him and he hops and grins for a couple of seconds, whatever his mood.
+Click him and he hops and grins for a couple of seconds, whatever his mood. Right-click him and a speech bubble tells you the CPU usage, updating as it changes, until it pops after five seconds or you right-click again.
 
 He is an ordinary Wayland client on wlr-layer-shell, so he runs on aion, Hyprland, sway, niri and anything else that implements it. By default he sits on the `bottom` layer: above the wallpaper, behind your windows.
 

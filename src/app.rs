@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState},
+    compositor::{CompositorHandler, CompositorState, Region},
     delegate_dispatch2, delegate_registry,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
@@ -33,6 +33,7 @@ use wayland_client::{
 };
 
 use crate::art::{self, Art, Pose};
+use crate::bubble::{self, Bubble};
 use crate::config::{Config, Corner};
 use crate::cpu::Cpu;
 use crate::pet::Pet;
@@ -40,6 +41,9 @@ use crate::sprite::BYTES_PER_PIXEL;
 
 const NAMESPACE: &str = "toothless";
 const BTN_LEFT: u32 = 0x110;
+const BTN_RIGHT: u32 = 0x111;
+/// How long his speech bubble stays up.
+const BUBBLE_TIME: Duration = Duration::from_secs(5);
 
 /// The layer surface he lives on, on one output.
 struct Den {
@@ -59,17 +63,23 @@ pub struct App {
 
     config: Config,
     art: Art,
+    bubble: Bubble,
     pet: Pet,
     cpu: Cpu,
+    /// The latest CPU reading, once there is one.
+    usage: Option<f32>,
     den: Option<Den>,
     pool: Option<SlotPool>,
     buffer: Option<Buffer>,
     pointer: Option<wl_pointer::WlPointer>,
 
     pose: Pose,
-    drawn: Option<(Pose, i32)>,
+    /// The pose, what his bubble said if he had one up, and the buffer scale.
+    drawn: Option<(Pose, Option<String>, i32)>,
     next_frame: Instant,
     next_sample: Instant,
+    /// When his speech bubble pops, while he has one up.
+    bubble_until: Option<Instant>,
 }
 
 impl App {
@@ -94,8 +104,10 @@ impl App {
             compositor,
             layer_shell,
             art: Art::load()?,
+            bubble: Bubble::load()?,
             pet,
             cpu: Cpu::default(),
+            usage: None,
             config,
             den: None,
             pool: None,
@@ -105,6 +117,7 @@ impl App {
             drawn: None,
             next_frame: now,
             next_sample: now,
+            bubble_until: None,
         })
     }
 
@@ -146,9 +159,34 @@ impl App {
         };
 
         layer.set_anchor(corner.anchor());
-        layer.set_size(art::WIDTH as u32 * scale, art::HEIGHT as u32 * scale);
+        // he takes the rows nearest his corner, and his speech bubble the strip past them
+        layer.set_size(
+            art::WIDTH as u32 * scale,
+            (art::HEIGHT + bubble::HEIGHT) as u32 * scale,
+        );
         layer.set_margin(top, right, bottom, left);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+        // clicks land on him, not on the empty strip his bubble pops up in
+        match Region::new(&self.compositor) {
+            Ok(region) => {
+                let scale = scale as i32;
+                let rows_above = if corner.is_top() {
+                    0
+                } else {
+                    bubble::HEIGHT as i32
+                };
+                region.add(
+                    0,
+                    rows_above * scale,
+                    art::WIDTH as i32 * scale,
+                    art::HEIGHT as i32 * scale,
+                );
+                layer
+                    .wl_surface()
+                    .set_input_region(Some(region.wl_region()));
+            }
+            Err(err) => log::error!("failed to create an input region: {err}"),
+        }
         layer.commit();
 
         log::info!(
@@ -173,12 +211,14 @@ impl App {
 
     fn draw(&mut self) {
         let Some(den) = &self.den else { return };
-        if !den.configured || self.drawn == Some((self.pose, den.buffer_scale)) {
+        let said = self.bubble_until.map(|_| bubble::cpu(self.usage));
+        let drawing = (self.pose, said, den.buffer_scale);
+        if !den.configured || self.drawn.as_ref() == Some(&drawing) {
             return;
         }
 
         let scale = self.config.scale as usize * den.buffer_scale as usize;
-        let (width, height) = (art::WIDTH * scale, art::HEIGHT * scale);
+        let (width, height) = (art::WIDTH * scale, (art::HEIGHT + bubble::HEIGHT) * scale);
         let stride = width * BYTES_PER_PIXEL;
 
         let pool = match &mut self.pool {
@@ -217,9 +257,23 @@ impl App {
             return;
         };
 
-        self.art
-            .render(self.pose)
-            .blit(canvas, scale, self.config.mirrored());
+        let mirror = self.config.mirrored();
+        let below = self.config.corner.is_top();
+        let rows_above = if below { art::HEIGHT } else { bubble::HEIGHT };
+        let (above, beneath) = canvas.split_at_mut(rows_above * scale * stride);
+        let (frame, strip) = if below {
+            (above, beneath)
+        } else {
+            (beneath, above)
+        };
+        self.art.render(self.pose).blit(frame, scale, mirror);
+        match &drawing.1 {
+            Some(text) => self
+                .bubble
+                .render(text, below, mirror)
+                .blit(strip, scale, false),
+            None => strip.fill(0),
+        }
 
         let surface = den.layer.wl_surface();
         surface.set_buffer_scale(den.buffer_scale);
@@ -230,7 +284,7 @@ impl App {
         }
         den.layer.commit();
 
-        self.drawn = Some((self.pose, den.buffer_scale));
+        self.drawn = Some(drawing);
         self.buffer = Some(buffer);
     }
 
@@ -240,6 +294,7 @@ impl App {
 
         if now >= self.next_sample {
             if let Some(cpu) = self.cpu.sample() {
+                self.usage = Some(cpu);
                 let before = self.pet.mood();
                 self.pet.set_cpu(cpu);
                 if self.pet.mood() != before {
@@ -250,14 +305,20 @@ impl App {
             self.next_sample = now + Duration::from_millis(self.config.sample_interval);
         }
 
+        if self.bubble_until.is_some_and(|until| now >= until) {
+            self.bubble_until = None;
+        }
+
         if now >= self.next_frame {
             let (pose, hold) = self.pet.advance();
             self.pose = pose;
             self.next_frame = now + hold;
-            self.draw();
         }
+        // does nothing unless his pose, his bubble or the reading in it changed
+        self.draw();
 
-        self.next_frame.min(self.next_sample)
+        let next = self.next_frame.min(self.next_sample);
+        self.bubble_until.map_or(next, |until| next.min(until))
     }
 }
 
@@ -428,21 +489,33 @@ impl PointerHandler for App {
         _pointer: &wl_pointer::WlPointer,
         events: &[PointerEvent],
     ) {
-        let poked = events.iter().any(|event| {
-            matches!(
-                event.kind,
-                PointerEventKind::Press {
-                    button: BTN_LEFT,
-                    ..
-                }
-            ) && self
+        let now = Instant::now();
+        for event in events {
+            if !self
                 .den
                 .as_ref()
                 .is_some_and(|den| den.layer.wl_surface() == &event.surface)
-        });
-        if poked {
-            self.pet.poke();
-            self.next_frame = Instant::now();
+            {
+                continue;
+            }
+            match event.kind {
+                PointerEventKind::Press {
+                    button: BTN_LEFT, ..
+                } => {
+                    self.pet.poke();
+                    self.next_frame = now;
+                }
+                // he says how busy the CPU is, until it pops or he's right-clicked again
+                PointerEventKind::Press {
+                    button: BTN_RIGHT, ..
+                } => {
+                    self.bubble_until = match self.bubble_until {
+                        Some(_) => None,
+                        None => Some(now + BUBBLE_TIME),
+                    };
+                }
+                _ => {}
+            }
         }
     }
 }

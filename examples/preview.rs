@@ -4,6 +4,7 @@
 use std::io::Write;
 
 use toothless::art::{Art, Face, HEIGHT, Pose, WIDTH};
+use toothless::bubble::{self, Bubble};
 use toothless::sprite::BYTES_PER_PIXEL;
 
 const SCALE: usize = 6;
@@ -13,43 +14,70 @@ fn main() -> anyhow::Result<()> {
         .nth(1)
         .unwrap_or_else(|| "sheet.ppm".to_owned());
     let art = Art::load()?;
+    let bubble = Bubble::load()?;
+    // each pose, and the CPU reading he's asked about over some of them
     let poses = [
-        Pose::Sleep {
-            breath: false,
-            snore: 0,
-        },
-        Pose::Sleep {
-            breath: true,
-            snore: 3,
-        },
-        Pose::Sit {
-            face: Face::Plain,
-            wing: false,
-            hop: 0,
-        },
-        Pose::Sit {
-            face: Face::Blink,
-            wing: false,
-            hop: 0,
-        },
-        Pose::Sit {
-            face: Face::Plain,
-            wing: true,
-            hop: 2,
-        },
-        Pose::Sit {
-            face: Face::Happy,
-            wing: false,
-            hop: 0,
-        },
-        Pose::Charge { glow: 3 },
+        (
+            Pose::Sleep {
+                breath: false,
+                snore: 0,
+            },
+            None,
+        ),
+        (
+            Pose::Sleep {
+                breath: true,
+                snore: 3,
+            },
+            Some(4.0),
+        ),
+        (
+            Pose::Sit {
+                face: Face::Plain,
+                wing: false,
+                hop: 0,
+            },
+            None,
+        ),
+        (
+            Pose::Sit {
+                face: Face::Blink,
+                wing: false,
+                hop: 0,
+            },
+            Some(27.0),
+        ),
+        (
+            Pose::Sit {
+                face: Face::Plain,
+                wing: true,
+                hop: 2,
+            },
+            Some(68.0),
+        ),
+        (
+            Pose::Sit {
+                face: Face::Happy,
+                wing: false,
+                hop: 0,
+            },
+            None,
+        ),
+        (Pose::Charge { glow: 3 }, Some(100.0)),
     ];
 
-    let (w, h) = (WIDTH * SCALE, HEIGHT * SCALE);
+    let (w, h) = (WIDTH * SCALE, (bubble::HEIGHT + HEIGHT) * SCALE);
     let mut sheet = vec![0u8; poses.len() * w * h * 3];
     let mut frame = vec![0u8; w * h * BYTES_PER_PIXEL];
-    for (i, pose) in poses.into_iter().enumerate() {
-        art.render(pose).blit(&mut frame, SCALE, false);
+    for (i, (pose, usage)) in poses.into_iter().enumerate() {
+        let (strip, below) = frame.split_at_mut(bubble::HEIGHT * SCALE * w * BYTES_PER_PIXEL);
+        match usage {
+            Some(usage) => bubble
+                .render(&bubble::cpu(Some(usage)), false, false)
+                .blit(strip, SCALE, false),
+            None => strip.fill(0),
+        }
+        art.render(pose).blit(below, SCALE, false);
         for y in 0..h {
             for x in 0..w {
                 let p = &frame[(y * w + x) * BYTES_PER_PIXEL..][..BYTES_PER_PIXEL];

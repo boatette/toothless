@@ -7,6 +7,8 @@ corner = "bottom-right"
 margin = 24
 
 # Screen pixels per sprite pixel. The sprite is 40x28, so 4 makes him 160x112.
+# His surface is another 14 sprite pixels tall to fit his speech bubble, above
+# him in a bottom corner and below him in a top one. Only he takes clicks.
 scale = 4
 
 # Output to live on, by connector name. Unset, he takes the first one to appear.

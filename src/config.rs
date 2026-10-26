@@ -32,6 +32,10 @@ impl Corner {
     pub fn is_right(self) -> bool {
         matches!(self, Corner::TopRight | Corner::BottomRight)
     }
+
+    pub fn is_top(self) -> bool {
+        matches!(self, Corner::TopLeft | Corner::TopRight)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

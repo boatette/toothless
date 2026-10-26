@@ -23,6 +23,7 @@ pub fn color(cell: u8) -> [u8; 4] {
         b'v' => (0x9b8cff, 0x70), // plasma glow
         b'L' => (0xe8e3ff, 0xff), // plasma core
         b'Z' => (0xb8c4ec, 0xff), // snores
+        b'w' => (0xeef0fa, 0xff), // speech bubble
         _ => return [0; 4],
     };
     let premultiply = |shift: u32| (((rgb >> shift) & 0xff) * alpha / 255) as u8;
@@ -141,6 +142,20 @@ impl Canvas {
         }
     }
 
+    /// Swaps left and right.
+    pub fn mirror(&mut self) {
+        for row in self.cells.chunks_exact_mut(self.width) {
+            row.reverse();
+        }
+    }
+
+    /// Turns the canvas upside down.
+    pub fn flip(&mut self) {
+        // reversing every cell turns it upside down and back to front, so put the front back
+        self.cells.reverse();
+        self.mirror();
+    }
+
     /// Writes the canvas into an ARGB8888 buffer, each cell as a `scale`-pixel square.
     pub fn blit(&self, dst: &mut [u8], scale: usize, mirror: bool) {
         let stride = self.width * scale * BYTES_PER_PIXEL;
@@ -193,6 +208,16 @@ mod tests {
                 canvas.get(1, 1)
             ]
         );
+    }
+
+    #[test]
+    fn mirrors_and_flips() {
+        let mut canvas = Canvas::new(2, 2);
+        canvas.set(0, 0, b'G');
+        canvas.mirror();
+        assert_eq!(b'G', canvas.get(1, 0));
+        canvas.flip();
+        assert_eq!(b'G', canvas.get(1, 1));
     }
 
     #[test]
